@@ -1,0 +1,9 @@
+gwyddion-2.49.tar.gz
+_mac/
+codestyles/
+*.mdt
+.idea
+__pycache__/
+gwyddion-2.49
+.DS_Store
+*.xml
