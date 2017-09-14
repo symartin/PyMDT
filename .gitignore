@@ -1,9 +1,9 @@
-gwyddion-2.49.tar.gz
 _mac/
+__pycache__/
 codestyles/
+.DS_Store
+codestyles
 *.mdt
 .idea
-__pycache__/
-gwyddion-2.49
-.DS_Store
 *.xml
+spec/
