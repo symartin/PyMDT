@@ -15,32 +15,58 @@ class MDTFile:
         def shift_stream_position(self, shift_bytes):
             self._file.seek(shift_bytes, io.SEEK_CUR)
 
+        def read_uint8(self):
+            """Read a unsigned integer coded on 1 byte (a char)"""
+            return unpack("<B", self._file.read(1))[0]
+
         def read_uint16(self):
+            """Read a unsigned integer coded on 2 byte (a short)"""
             return unpack("<H", self._file.read(2))[0]
 
-        def read_uint64(self):
-            return unpack("<Q", self._file.read(8))[0]
-
         def read_uint32(self):
+            """Read a unsigned integer coded on 4 byte (a usual int or long int)"""
             return unpack("<I", self._file.read(4))[0]
 
+        def read_uint64(self):
+            """Read a unsigned integer coded on 8 byte (a long long)"""
+            return unpack("<Q", self._file.read(8))[0]
+
+        def read_int8(self):
+            """Read a signed integer coded on 1 byte (a char)"""
+            return unpack("<b", self._file.read(1))[0]
+
+        def read_int16(self):
+            """Read a signed integer coded on 2 byte (a short)"""
+            return unpack("<h", self._file.read(2))[0]
+
         def read_int32(self):
+            """Read a unsigned integer coded on 4 byte (a usual int or long int)"""
             return unpack("<i", self._file.read(4))[0]
 
+        def read_int64(self):
+            """Read a unsigned integer coded on 8 byte (a long long)"""
+            return unpack("<q", self._file.read(8))[0]
+
         def read_char(self):
+            """Read one character coded on 1 byte (a usual char)"""
             return unpack("<c", self._file.read(1))[0]
 
         def read_uchar(self):
+            """Read a unsigned integer coded on 1 byte (a char)
+                idem that read_uint8()
+            """
             return int(unpack('<B', self._file.read(1))[0])
 
         def read_double(self):
             return float(unpack('<d', self._file.read(8))[0])
 
-        def read_float64(self):
-                return self.read_double()
-
         def read_float32(self):
+            """Read a signed float coded on 4 byte (a float)"""
             return float(unpack('<f', self._file.read(4))[0])
+
+        def read_float64(self):
+            """Read a signed float coded on 8 byte (au double float)"""
+            return float(unpack('<d', self._file.read(8))[0])
 
         def __getattr__(self, attr):
             return getattr(self._file, attr)
@@ -318,13 +344,10 @@ class MDTFrame:
         file.shift_stream_position(36)
 
         def extract_string(string_len):
-            if string_len>0 :
-                if string_len==1:
-                    return file.read_uchar()
-                else:
-                    return file.read(string_len)
-            else :
-                return None
+            bytes = file.read(string_len)
+            # in don't really know why but decode('utf-8) does't work for '°'
+            return "".join(map(chr, bytes))
+
 
         calibration['name'] = extract_string(calibration['name_len'])
         file.seek(sp) # apparently there is 36 byte after the header not used (at least here)
@@ -346,30 +369,41 @@ class MDTFrame:
         y_axis = self.dimensions[1]
         z_axis = self.mesurands[0]
 
+        if y_axis['unit'] == y_axis['unit'] : print("Error : the unit for X and Y are not the same !")
 
-        if x_axis['unit'] and x_axis['unit_len']:
-            try :
-                self.xy_unit = x_axis['unit'].decode('utf-8','replace')
-                #TODO implement gwy_si_unit_new_parse(unit, &power10xy);
-            except AttributeError as e:
-                print(e)
-        else:
-            pass
-            # TODO implement here !
-            #cunit = gwy_flat_enum_to_string(unitCodeForSiCode(xAxis->siUnit),
-            #G_N_ELEMENTS(mdt_units),
-            #mdt_units, mdt_units_name);
-            #siunitxy = gwy_si_unit_new_parse(cunit, & power10xy);
+        self.xy_unit = x_axis['unit']
+        self.z_unit  = z_axis['unit']
+        #TODO implement gwy_si_unit_new_parse(unit, &power10xy);
 
+        # TODO implement here !
+
+        # data size
         nx  = x_axis['max_index'] - x_axis['min_index'] + 1
         ny = y_axis['max_index'] - y_axis['min_index'] + 1
-        xreal = x_axis['scale'] * (nx - 1)
-        yreal = y_axis['scale'] * (ny - 1)
+
+        # physical size
+        self.xreal = x_axis['scale'] * (nx - 1)
+        self.yreal = y_axis['scale'] * (ny - 1)
         zscale = z_axis['scale']
         zoffset =  z_axis['bias']
 
         total = nx * ny
         result = []
+
+        fct_read = {
+            MDADataType.MDA_DATA_INT8 : None,
+            MDADataType.MDA_DATA_UINT8 : None,
+            MDADataType.MDA_DATA_INT16 : None,
+            MDADataType.MDA_DATA_UINT16: None,
+            MDADataType.MDA_DATA_INT32: None,
+            MDADataType.MDA_DATA_UINT32: None,
+            MDADataType.MDA_DATA_INT64: None,
+            MDADataType.MDA_DATA_UINT64: None,
+            MDADataType.MDA_DATA_FLOAT32: None,
+            MDADataType.MDA_DATA_FLOAT64: None,
+        }[z_axis['data_type']]
+
+
         if  z_axis['data_type']== MDADataType.MDA_DATA_INT8:
             pass
         if  z_axis['data_type']== MDADataType.MDA_DATA_UINT8:
@@ -389,6 +423,7 @@ class MDTFrame:
         if  z_axis['data_type']== MDADataType.MDA_DATA_FLOAT32:
             pass
         if  z_axis['data_type']== MDADataType.MDA_DATA_FLOAT64:
+
             for i in range(total):
                 result.append(file.read_float64())
 
@@ -396,7 +431,7 @@ class MDTFrame:
         else :
             print('ERROR ') #TODO manage the error
 
-        print(result)
+        print(result[:20])
     def read_mda_frame(self,file):
 
         starting_position = file.tell()
