@@ -2,6 +2,7 @@ import binascii
 import io
 import os
 from struct import *
+import numpy as np
 
 from MDTdeclaration import *
 
@@ -127,7 +128,6 @@ class MDTFile:
 
         finally:
             self._file.close()
-
 
     def print_me(self):
         print ("file size w/o header: " + str(self.size) + " bits")
@@ -330,9 +330,8 @@ class MDTFrame:
         calibration['unit_len']     = file.read_uint32()
         calibration['unit_code']    = file.read_uint64() #si_unit
         calibration['accuracy']     = file.read_double()
-        calibration['fct_id']       = file.read_uint32()
-        calibration['fct_pointer']  = file.read_uint32()
-        #file.shift_stream_position(8) #skip function id and dimensions
+        calibration['fct_id']       = file.read_uint32() # not sure what is for
+        calibration['fct_pointer']  = file.read_uint32() # not sure what is for
         calibration['bias']         = file.read_double()
         calibration['scale']        = file.read_double()
         calibration['min_index']    = file.read_uint64()
@@ -361,7 +360,7 @@ class MDTFrame:
 
         file.seek(starting_position + calibration['total_len'])
 
-        print(calibration)
+        #print(calibration)
         return calibration
 
     def extract_mda_data(self,file):
@@ -369,13 +368,11 @@ class MDTFrame:
         y_axis = self.dimensions[1]
         z_axis = self.mesurands[0]
 
-        if y_axis['unit'] == y_axis['unit'] : print("Error : the unit for X and Y are not the same !")
+        if y_axis['unit'] != x_axis['unit'] : print("Error : the unit for X and Y are not the same !")
 
         self.xy_unit = x_axis['unit']
         self.z_unit  = z_axis['unit']
         #TODO implement gwy_si_unit_new_parse(unit, &power10xy);
-
-        # TODO implement here !
 
         # data size
         nx  = x_axis['max_index'] - x_axis['min_index'] + 1
@@ -390,48 +387,32 @@ class MDTFrame:
         total = nx * ny
         result = []
 
-        fct_read = {
-            MDADataType.MDA_DATA_INT8 : None,
-            MDADataType.MDA_DATA_UINT8 : None,
-            MDADataType.MDA_DATA_INT16 : None,
-            MDADataType.MDA_DATA_UINT16: None,
-            MDADataType.MDA_DATA_INT32: None,
-            MDADataType.MDA_DATA_UINT32: None,
-            MDADataType.MDA_DATA_INT64: None,
-            MDADataType.MDA_DATA_UINT64: None,
-            MDADataType.MDA_DATA_FLOAT32: None,
-            MDADataType.MDA_DATA_FLOAT64: None,
+        file_fct_read = {
+            MDADataType.MDA_DATA_INT8 : file.read_int8,
+            MDADataType.MDA_DATA_UINT8 : file.read_uint8,
+            MDADataType.MDA_DATA_INT16 : file.read_int16,
+            MDADataType.MDA_DATA_UINT16: file.read_uint16,
+            MDADataType.MDA_DATA_INT32: file.read_int32,
+            MDADataType.MDA_DATA_UINT32: file.read_uint32,
+            MDADataType.MDA_DATA_INT64: file.read_int64,
+            MDADataType.MDA_DATA_UINT64: file.read_uint64,
+            MDADataType.MDA_DATA_FLOAT32: file.read_float32,
+            MDADataType.MDA_DATA_FLOAT64: file.read_float64,
         }[z_axis['data_type']]
 
+        try:
+            for i in range(nx):
+                y_data = []
+                for j in range(ny):
+                    y_data.append(file_fct_read())
+                result.append(y_data)
 
-        if  z_axis['data_type']== MDADataType.MDA_DATA_INT8:
-            pass
-        if  z_axis['data_type']== MDADataType.MDA_DATA_UINT8:
-            pass
-        if  z_axis['data_type']== MDADataType.MDA_DATA_INT16:
-            pass
-        if  z_axis['data_type']== MDADataType.MDA_DATA_UINT16:
-            pass
-        if  z_axis['data_type']== MDADataType.MDA_DATA_INT32:
-            pass
-        if  z_axis['data_type']== MDADataType.MDA_DATA_UINT32:
-            pass
-        if  z_axis['data_type']== MDADataType.MDA_DATA_INT64:
-            pass
-        if  z_axis['data_type']== MDADataType.MDA_DATA_UINT64:
-            pass
-        if  z_axis['data_type']== MDADataType.MDA_DATA_FLOAT32:
-            pass
-        if  z_axis['data_type']== MDADataType.MDA_DATA_FLOAT64:
+        except KeyError as e:
+            print(e)
+            print('The data format in the frame %s is not supported' %self.title)
 
-            for i in range(total):
-                result.append(file.read_float64())
+        self.data = np.array(result)
 
-
-        else :
-            print('ERROR ') #TODO manage the error
-
-        print(result[:20])
     def read_mda_frame(self,file):
 
         starting_position = file.tell()
@@ -486,10 +467,10 @@ class MDTFrame:
         if xml_size and (self.size - (file.tell() - self.fstart)) >= xml_size :
             self.metadata = file.read(xml_size).decode('utf-16')
 
-        print('-----------------')
-        print("frame name: %s" % self.title)
+        #print('-----------------')
+        #print("frame name: %s" % self.title)
         # print("frame metadata: %s" % self.metadata)
-        print('-----------------')
+        #print('-----------------')
 
         # skip FrameSpec ViewInfo SourceInfo and vars
         file.shift_stream_position(spec_size) # I clearly don't know what is the FrameSpec...
