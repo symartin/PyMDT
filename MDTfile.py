@@ -93,8 +93,8 @@ class MDTFile:
                 frame.read_header(self._file)
                 #frame.print_header()
 
-
                 if frame.type == MDTFrameType.MDT_FRAME_SCANNED:
+                    raise Exception("Frame #%d: Frame STM note implemented yet." % i)
                     pass
 
                 elif (frame.type == MDTFrameType.MDT_FRAME_SPECTROSCOPY or
@@ -103,7 +103,6 @@ class MDTFile:
 
                 elif frame.type == MDTFrameType.MDT_FRAME_TEXT:
                     frame.read_text_frame(self._file)
-                    #frame.print_header()
 
                 elif frame.type == MDTFrameType.MDT_FRAME_OLD_MDA:
                     pass
@@ -116,7 +115,7 @@ class MDTFile:
                     pass
 
                 elif frame.type == MDTFrameType.MDT_FRAME_PALETTE:
-                    pass
+                    raise Exception("Frame #%d: Frame palette data not supported."%i)
 
                 else:
                     pass
@@ -125,7 +124,6 @@ class MDTFile:
 
                 # to be sure we reposition the pointer where it should be after reading the frame
                 self._file.seek(frame.fstart + frame.size)
-
 
         finally:
             self._file.close()
@@ -183,6 +181,7 @@ class MDTFrame:
      self.mesurands     = []
 
      self.xy_unit       = ""
+     self.z_unit        = ""
 
      self.nx            = 0
      self.ny            = 0
@@ -411,15 +410,12 @@ class MDTFrame:
         self.data = np.array(result)
 
     def extract_mda_spectrum(self,file):
-        """ """
+        """
 
+        mesurands == 1 and dimensions  == 1"""
 
-        if self.nb_dimensions > 0 :
-            x_axis = self.dimensions[0]
-            y_axis = self.mesurands[0]
-        else:
-            raise "old variant of MDA-Frame/spectrum not supported yet."
-
+        x_axis = self.dimensions[0]
+        y_axis = self.mesurands[0]
 
         self.xy_unit = x_axis['unit']
         self.z_unit = y_axis['unit']
@@ -431,9 +427,6 @@ class MDTFrame:
 
         #    /* If res == 0, fallback to arraysize */
         if data_len == 0: res = self.array_size
-
-        x=[]
-        y=[]
 
         try:
             file_fct_read_x_var = {
@@ -463,9 +456,11 @@ class MDTFrame:
             }[y_axis['data_type']]
 
             #the data structure is xyxyxyx... with x and y 2 different types of data.
+            x = []
+            y = []
             for i in range(data_len):
-                x[i] = file_fct_read_x_var()
-                y[i] = file_fct_read_y_var()
+                x.append(file_fct_read_x_var())
+                y.append(file_fct_read_y_var())
 
         except KeyError as e:
             print(e)
@@ -474,14 +469,16 @@ class MDTFrame:
         self.data = np.array([x,y])
 
     def read_mda_frame(self,file):
+        """Read the header of the frame and then call the right function to read the data"""
 
+        #to realign at the right position later
         starting_position = file.tell()
 
         # the header size and te total size
         head_size = file.read_uint32() #usaly 76 bytes
-        total_len = file.read_uint32()
+        total_size = file.read_uint32()
 
-        #skip guids and frame status
+        #read guids (even if it's not really useful)
         self.guids = [str(binascii.hexlify(bytearray(file.read(16)))), str(binascii.hexlify(bytearray(file.read(16))))]
 
         # skip the 4 0x00 bytes
@@ -498,10 +495,11 @@ class MDTFrame:
         #skip data offset
         file.shift_stream_position(4)
 
+        #the data size, not really useful because we use the var size...
         data_size = file.read_uint32()
 
 
-        if total_len < head_size : raise Exception("the frame size is smaller than the header size")
+        if total_size < head_size : raise Exception("the frame size is smaller than the header size")
 
         # to be sure to start reading at the right place
         file.seek(starting_position + head_size)
@@ -523,7 +521,7 @@ class MDTFrame:
         if var_size != file.read_uint32() :
             raise Exception("The variable size indicated in the header is not the same that the one put in the data")
 
-        struct_len = file.read_uint32()
+        struct_size = file.read_uint32()
         struct_pointer = file.tell()
 
         self.array_size = file.read_uint64()
@@ -531,7 +529,7 @@ class MDTFrame:
         self.nb_dimensions = file.read_uint32()
         self.nb_mesurands = file.read_uint32()
 
-        file.seek(struct_pointer + struct_len)
+        file.seek(struct_pointer + struct_size)
 
         if self.nb_dimensions != 0 :
             for i in range(self.nb_dimensions) :
@@ -545,18 +543,17 @@ class MDTFrame:
         if self.nb_dimensions == 2 and self.nb_mesurands == 1:
             self.extract_mda_data(file)
 
-        elif ((self.nb_dimensions == 0 and self.nb_mesurands == 2)
-                  or (self.nb_dimensions == 1 and self.nb_mesurands == 1)) :
-            # raman spectra */
-            # GwyGraphModel *gmodel;
-            #
+        elif self.nb_dimensions == 0 and self.nb_mesurands == 2 :
+            # in this cas the dimension are stored in the XML metadata
+            raise Exception("old variant of MDA-Frame/spectrum not supported yet.")
+
+
+        elif self.nb_dimensions == 1 and self.nb_mesurands == 1 :
             self.extract_mda_spectrum(file)
-            # g_string_printf(key, "/0/graph/graph/%d", n+1);
-            # gwy_container_set_object_by_name(data, key->str, gmodel);
-            # g_object_unref(gmodel);
-            # n++;
+
             pass
         elif self.nb_dimensions == 3 and self.nb_mesurands >= 1 :
+            raise Exception(" MDA-Frame/brick data not supported yet.")
             # raman images */
             # if ((brick = extract_brick(mdaframe, i+1, &n, filename))) {
             #     gwy_container_transfer(brick, data, "/", "/", FALSE);
@@ -564,12 +561,6 @@ class MDTFrame:
         else :
                 print(" frame %s : dim = %d mes = %d, not supported\n" %
                       (self.title, self.nb_dimensions, self.nb_mesurands))
-
-
-
-
-
-
 
     def print_header(self):
         """
@@ -590,8 +581,21 @@ class MDTFrame:
 
 
 
-path = "/Users/sylvainmartin/Documents/Work/Projets/python/nt-mdt/"
-filename = path + "test5.mdt"
+path = "/Users/sylvainmartin/Documents/Work/Projets/python/nt-mdt/Test Files/"
+
+filename = [
+    "test5.mdt",
+    "f14h20-mica.mdt",
+    "erythrocytes-aa.mdt",
+    "ferrite-garnet_film.mdt",
+    "graphene_2.mdt",
+    "plasmid_dna-aa.mdt",
+    "test_structure.mdt"
+]
+
+
+
+filename = path + filename[-1]
 mdt_file = MDTFile()
 
 
@@ -603,12 +607,11 @@ if __name__ == "__main__":
 
     mdt_file.load_mdt_file(filename)
     for frm in mdt_file.frames:
-        print(frm.title)
-        print ("  " + str(frm.type))
+        print(frm.title + "  " + str(frm.type))
 
 
 
-
+    #"graphene_2.mdt"
 
 
 
