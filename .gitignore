@@ -1,6 +1,8 @@
 _mac/
 __pycache__/
 codestyles/
+inspection/
+.idea/
 .DS_Store
 codestyles
 *.mdt
