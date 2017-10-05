@@ -93,7 +93,7 @@ class MDTFile:
 
             for i in range(mdt_file.last_frame + 1):
                 frame = MDTFrame()
-                frame.read_header(self._file)
+                frame.extract_header(self._file)
                 frame.print_header()
 
                 if frame.type == MDTFrameType.MDT_FRAME_SCANNED:
@@ -105,7 +105,7 @@ class MDTFile:
                     pass
 
                 elif frame.type == MDTFrameType.MDT_FRAME_TEXT:
-                    frame.read_text_frame(self._file)
+                    frame.extract_text_frame(self._file)
 
                 elif frame.type == MDTFrameType.MDT_FRAME_OLD_MDA:
                     self._debug("ERROR - Frame #%d: Old MDA frame not supported" % i)
@@ -211,7 +211,7 @@ class MDTFrame:
         else :
             return MDTUnit.MDT_UNIT_SECOND
 
-    def read_header(self, file):
+    def extract_header(self, file):
         """
         load the header of the frame, starting at 'file' current position.
         :param file: a MDTBufferedReaderDecorator object warping the mdt file to load
@@ -244,7 +244,7 @@ class MDTFrame:
         # unsigned integer, size of variables (in version 6 and earlier). Not used in version 7.
         self.var_size = file.read_uint16()
 
-    def read_text_frame(self,file):
+    def extract_text_frame(self, file):
         """
         Read the title, data et xml metadata of a text frame, starting at the file current position
 
