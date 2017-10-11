@@ -102,18 +102,18 @@ class MDTFile:
                 self.frames.append(frame)
 
                 # to be sure we reposition the pointer where it should be after reading the frame
-                self._file.seek(frame.fstart + frame.size)
+                self._file.seek(frame.frm_ptr_start + frame.frm_byte_size)
 
         finally:
             self._file.close()
 
     def __read_header(self, file):
         """ Read the header of the mdt file"""
-        if file_size < 34: raise Exception("The file is shorter than it's header size")
+        if file_size < 34: raise Exception("The file is shorter than it's header frm_byte_size")
         # magic header
         file.shift_stream_position(4)
 
-        # File size (w/o header)
+        # File frm_byte_size (w/o header)
         self.size = file.read_uint32()
 
         #  4 bytes reserved (??)
@@ -130,44 +130,55 @@ class MDTFile:
         file.shift_stream_position(1)
 
         if file_size < self.size + 33:
-            raise Exception("Mismatch between the actual file size \
-                             and the size declared in the header")
+            raise Exception("Mismatch between the actual file frm_byte_size \
+                             and the frm_byte_size declared in the header")
 
 
 class MDTFrame:
 
     def __init__(self):
-     self.size       = 0
-     self.type       = None
-     self.version    = (0,0)
-     self.year       = 0
-     self.month      = 0
-     self.day        = 0
-     self.hour       = 0
-     self.min        = 0
-     self.sec        = 0
-     self.fstart     = 0
-     self.var_size   = 0 # v6 and older only */
-     self.data       = None
-     self.metadata   = ""
-     self.title      = ""
-     self.guids      = ""
 
-     self.data_field    = None #store the pointer to the data for this frame
-     self.array_size    = 0
-     self.cell_size     = 0
-     self.nb_dimensions = 0
-     self.dimensions    = []
-     self.nb_mesurands  = 0
-     self.mesurands     = []
+        # system and file ptr stuff
+        self.frm_byte_size = 0 # frm_byte_size in byte of the frame
+        self.frm_ptr_start = 0 #store the pointer to the beginning of the frame
+        self.__var_size    = 0  # v6 and older only */
+        self.__data_field  = None #store the pointer to the data for this frame
+        self.__data_size   = 0 # used in old version (apparently) the size of the data file in MDADataType
+        self.__cell_size   = 0 # not sure yet...
 
-     self.xy_unit       = ""
-     self.z_unit        = ""
+        self.type      = None
+        self.version   = (0,0)
 
-     self.nx            = 0
-     self.ny            = 0
-     self.xreal         = 0 # physical size
-     self.yreal         = 0
+        self.title = ""
+        self.guids = ""
+
+        # the date
+        self.year  = 0
+        self.month = 0
+        self.day   = 0
+        self.hour  = 0
+        self.min   = 0
+        self.sec   = 0
+
+        # all about data
+        self.data       = None
+        self.metadata   = ""
+
+        self.nb_dimensions = 0      # the number of dimension
+        self.dimensions    = []     # a list of the dictionary with all the dimension
+        self.dimensions_unit = ""   # the unit for the dimensions (usually x and y - should be the same)
+
+        self.nb_mesurands  = 0      # the number of mesurand (Wikipedia: the physical quantity or property which is measured.)
+        self.mesurands     = []     # a list of the dictionary with all the mesurands
+        self.mesurands_unit    = "" #the unit for mesurands
+
+        # more for 2D data, those varable are here for convenient, everything is already in dimensions and/or mesurands
+        self.xn            = 0 # the number of point for the x axis
+        self.yn            = 0 # the number of point for the x axis
+        self.xbias         = 0 # the bias for the x axis
+        self.ybias         = 0 # the bias for the y axis
+        self.xreal         = 0 # physical size of the data (scale*xn)
+        self.yreal         = 0 # physical size of the data (scale*yn)
 
     def __unit_code_for_si_code(self, code):
         """transform the binary code for unit in the mda frame to understandable unit """
@@ -200,6 +211,7 @@ class MDTFrame:
         elif frame.type == MDTFrameType.MDT_FRAME_TEXT:
             logging.info("Frame %d is a text frame"%num)
             frame.__extract_text_frame(file)
+            logging.info("--> Frame %s loaded"%frame.title)
 
         elif frame.type == MDTFrameType.MDT_FRAME_OLD_MDA:
             logging.warning("Frame #%d: Old MDA frame not supported" % num)
@@ -207,6 +219,7 @@ class MDTFrame:
         elif frame.type == MDTFrameType.MDT_FRAME_MDA:
             logging.info("Frame %d is a MDA frame" % num)
             frame.__read_mda_frame(file)
+            logging.info("--> Frame %s loaded" % frame.title)
 
         elif frame.type == MDTFrameType.MDT_FRAME_CURVES_NEW:
             logging.warning("Frame #%d: MDT_FRAME_CURVES_NEW not supported." % num)
@@ -224,10 +237,10 @@ class MDTFrame:
         load the header of the frame, starting at 'file' current position.
         :param file: a MDTBufferedReaderDecorator object warping the mdt file to load
         """
-        self.fstart = file.tell()
+        self.frm_ptr_start = file.tell()
 
-        # the size of the frame with header
-        self.size = file.read_uint32()
+        # the frm_byte_size of the frame with header
+        self.frm_byte_size = file.read_uint32()
 
         # frame type
         self.type = file.read_uint16()
@@ -249,8 +262,8 @@ class MDTFrame:
         self.min   = file.read_uint16()
         self.sec   = file.read_uint16()
 
-        # unsigned integer, size of variables (in version 6 and earlier). Not used in version 7.
-        self.var_size = file.read_uint16()
+        # unsigned integer, frm_byte_size of variables (in version 6 and earlier). Not used in version 7.
+        self.__var_size = file.read_uint16()
 
     def __extract_text_frame(self, file):
         """
@@ -274,21 +287,21 @@ class MDTFrame:
          - the title
 
         In the xml part
-         - the first 2 bytes are the size of this part usually 580
+         - the first 2 bytes are the frm_byte_size of this part usually 580
          - two 0x00 byte
          - the XML text : the characters are utf-16 packed by 2 bytes
 
         After that, there are some non-zero bytes, but I don't know what there are for.
         """
-        size = self.size - ByteSize.FRAME_HEADER_SIZE
+        size = self.frm_byte_size - ByteSize.FRAME_HEADER_SIZE
 
         if size < 1:
-            raise Exception("the frame size is smaller than the frame header size")
+            raise Exception("the frame frm_byte_size is smaller than the frame header frm_byte_size")
 
         data_len = file.read_uint16() # unpack('<H', file.read(2))[0]  # int(data_buffer[pos])
 
         if size < 18 + data_len + 4:  # +4 for the title length bytes and the 3 zeros
-            raise Exception("the frame size is smaller than the data size")
+            raise Exception("the frame frm_byte_size is smaller than the data frm_byte_size")
 
         # we jump the 16 0x00 bytes
         file.shift_stream_position(16)
@@ -307,19 +320,19 @@ class MDTFrame:
             file.shift_stream_position(-1)
 
         if size < 18 + data_len + 4 + title_len:
-            raise Exception("the frame size is smaller than the data size + title size")
+            raise Exception("the frame frm_byte_size is smaller than the data frm_byte_size + title frm_byte_size")
 
         # the title of the frame
         self.title = file.read(title_len).decode('utf-8')
 
         if size < 18 + data_len + 4 + title_len + 2:
-            raise Exception("the frame size is smaller than the data size + title size + XML header")
+            raise Exception("the frame frm_byte_size is smaller than the data frm_byte_size + title frm_byte_size + XML header")
 
         # we unpack the length of the metadata on 2 bytes (unit16)
         xml_len = file.read_uint16()
 
         if size < 18 + data_len + 4 + title_len + 2 + xml_len:
-            raise Exception("the frame size is smaller than the data size + title size + XML data")
+            raise Exception("the frame frm_byte_size is smaller than the data frm_byte_size + title frm_byte_size + XML data")
 
         # we jump the 2 0x00 byte
         file.shift_stream_position(2)
@@ -398,21 +411,25 @@ class MDTFrame:
         if y_axis['unit'] != x_axis['unit'] :
             logging.warning("Frame %s : Error : the unit for X and Y are not the same !" % self.title)
 
-        self.xy_unit = x_axis['unit']
-        self.z_unit  = z_axis['unit']
+        self.dimensions_unit = x_axis['unit']
+        self.mesurands_unit  = z_axis['unit']
 
 
         # data size
-        self.nx  = x_axis['max_index'] - x_axis['min_index'] + 1
-        self.ny = y_axis['max_index'] - y_axis['min_index'] + 1
+        self.xn = x_axis['max_index'] - x_axis['min_index'] + 1
+        self.yn = y_axis['max_index'] - y_axis['min_index'] + 1
 
         # physical size
-        self.xreal = x_axis['scale'] * (self.nx - 1)
-        self.yreal = y_axis['scale'] * (self.ny - 1)
+        self.xreal = x_axis['scale'] * (self.xn - 1)
+        self.yreal = y_axis['scale'] * (self.yn - 1)
+
+        self.xbias = x_axis['bias']
+        self.ybias = y_axis['bias']
+
         zscale = z_axis['scale']
         zoffset =  z_axis['bias']
 
-        total = self.nx * self.ny
+        total = self.xn * self.yn
 
         try:
             file_fct_read = {
@@ -436,7 +453,7 @@ class MDTFrame:
             logging.warning(e)
             logging.warning('The data format in the frame %s is not supported' %self.title)
 
-        self.data = np.reshape(data,(self.nx,self.ny))
+        self.data = np.reshape(data, (self.xn, self.yn))
 
     def __extract_mda_curve(self, file): # previously extract_mda_spectrum
         """extract the data for mda curve (also called spectrum)
@@ -455,16 +472,23 @@ class MDTFrame:
             y_axis = self.mesurands[1]
 
 
-        self.xy_unit = x_axis['unit']
-        self.z_unit = y_axis['unit']
+        self.dimensions_unit = x_axis['unit']
+        self.mesurands_unit = y_axis['unit']
 
         x_scale = x_axis['scale']
         y_scale = y_axis['scale']
 
+        self.xbias = x_axis['bias']
+        self.ybias = y_axis['bias']
+
         data_len = x_axis['max_index'] - x_axis['min_index']
 
         #    /* If res == 0, fallback to arraysize */
-        if data_len == 0: data_len = self.array_size
+        if data_len == 0: data_len = self.__data_size
+
+        # there are couple so xn == yn
+        self.xn = data_len
+        self.yn = data_len
 
         try:
             file_fct_read_x_var = {
@@ -494,7 +518,7 @@ class MDTFrame:
             }[y_axis['data_type']]
 
             # we check the file pointer position, just in case
-            if self.data_field != file.tell():
+            if self.__data_field != file.tell():
                 raise Exception("Error : There is a shift in the reader position")
 
             # For this part, everything is not clear yet. According to Gwydion code there are 2 types of
@@ -509,11 +533,15 @@ class MDTFrame:
             if self.nb_dimensions >0: # we test if it is old type like
                 y = np.empty(data_len, dtype=float)
 
+
                 for n in range(data_len):
                     y[n] = y_scale*file_fct_read_y_var()
 
+                self.yreal = y.max() - y.min()
+
                 if x_axis["comment"] == "" : #No XML-metadata stuff
                     x = np.empty(data_len, dtype=float)
+                    self.xreal = self.xn * x_scale
                     for n in range(data_len):
                         x[n] = x_axis["bias"] + n*x_axis["scale"]
 
@@ -552,7 +580,7 @@ class MDTFrame:
         #to realign at the right position later
         starting_position = file.tell()
 
-        # the header size and te total size
+        # the header frm_byte_size and te total frm_byte_size
         head_size = file.read_uint32() #usaly 76 bytes
         total_size = file.read_uint32()
 
@@ -573,21 +601,21 @@ class MDTFrame:
         #skip data offset
         file.shift_stream_position(4)
 
-        #the data size, not really useful because we use the var size...
+        #the data frm_byte_size, not really useful because we use the var frm_byte_size...
         data_size = file.read_uint32()
 
 
-        if total_size < head_size : raise Exception("the frame size is smaller than the header size")
+        if total_size < head_size : raise Exception("the frame frm_byte_size is smaller than the header frm_byte_size")
 
         # to be sure to start reading at the right place
         file.seek(starting_position + head_size)
 
-        if title_size != 0 and (self.size - (file.tell() - self.fstart)) >= title_size :
+        if title_size != 0 and (self.frm_byte_size - (file.tell() - self.frm_ptr_start)) >= title_size :
             self.title = file.read(title_size).decode('utf-8')
         else :
             self.title = ""
 
-        if xml_size and (self.size - (file.tell() - self.fstart)) >= xml_size :
+        if xml_size and (self.frm_byte_size - (file.tell() - self.frm_ptr_start)) >= xml_size :
             self.metadata = file.read(xml_size).decode('utf-16')
 
         # skip FrameSpec ViewInfo SourceInfo and vars
@@ -595,15 +623,15 @@ class MDTFrame:
         file.shift_stream_position(view_info_size)
         file.shift_stream_position(source_info_size)
 
-        # after there is again a 4 bytes integer with the size of the data
+        # after there is again a 4 bytes integer with the frm_byte_size of the data
         if var_size != file.read_uint32() :
-            raise Exception("The variable size indicated in the header is not the same that the one put in the data")
+            raise Exception("The variable frm_byte_size indicated in the header is not the same that the one put in the data")
 
         struct_size = file.read_uint32()
         struct_pointer = file.tell()
 
-        self.array_size = file.read_uint64()
-        self.cell_size = file.read_uint32()
+        self.__data_size = file.read_uint64()
+        self.__cell_size = file.read_uint32()
         self.nb_dimensions = file.read_uint32()
         self.nb_mesurands = file.read_uint32()
 
@@ -618,7 +646,7 @@ class MDTFrame:
                 self.mesurands.append(self.__extract_mda_calibration(file))
 
         #store the pointer to the data for this frame
-        self.data_field = file.tell()
+        self.__data_field = file.tell()
 
 
         # extraction of the 2D color map
@@ -649,12 +677,12 @@ class MDTFrame:
         (for debug purpose).
         """
         logging.debug("--------------------------------------")
-        logging.debug("Frame start at byte %d" % self.fstart)
-        logging.debug("frame size: " + str(self.size) + " bytes")
+        logging.debug("Frame start at byte %d" % self.frm_ptr_start)
+        logging.debug("frame frm_byte_size: " + str(self.frm_byte_size) + " bytes")
         logging.debug("Frame version: " + str(self.version))
         logging.debug("Frame datetime: %d-%02d-%02d %02d:%02d:%02d" % \
                (self.year, self.month, self.day, self.hour, self.min, self.sec))
-        logging.debug("frame var_size : " + str(self.var_size) + " -- Not use in version 7.x")
+        logging.debug("frame __var_size : " + str(self.__var_size) + " -- Not use in version 7.x")
         logging.debug("Frame type : " + str(self.type) + " -- "+ str(MDTFrameType(self.type)))
         logging.debug("--------------------------------------")
 
@@ -678,18 +706,19 @@ if __name__ == "__main__":
         "curve_test2.mdt",
     ]
 
-    filename = str(path) +"/Test Files/" + filename[1]
+    filename = str(path) +"/Test Files/" + filename[0]
     mdt_file = MDTFile()
     file_size = os.path.getsize(filename)
 
     mdt_file.load_mdt_file(filename)
     for i, frm in enumerate(mdt_file.frames):
         print(str(i) + " - " + frm.title + " - " + str(frm.type))
+        print(frm.xbias,frm.ybias )
 
-    print(mdt_file.frames[1].data)
+    #print(mdt_file.frames[1].data)
 
 
-    np.savetxt(str(path)+"/foo.csv", mdt_file.frames[1].data, delimiter="\t")
+    #np.savetxt(str(path)+"/foo.csv", mdt_file.frames[1].data, delimiter="\t")
 
 
     # print(mdt_file.frames[0].data.T)
