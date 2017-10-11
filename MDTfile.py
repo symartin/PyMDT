@@ -94,13 +94,13 @@ class MDTFile:
 
             mdt_file.read_header(self._file)
 
-            for i in range(mdt_file.last_frame + 1):
+            for frm in range(mdt_file.last_frame + 1):
                 frame = MDTFrame()
                 frame.extract_header(self._file)
                 #frame.print_header()
 
                 if frame.type == MDTFrameType.MDT_FRAME_SCANNED:
-                    logging.warning("Frame #%d: Frame STM not implemented yet." % i)
+                    logging.warning("Frame #%d: Frame STM not implemented yet." % frm)
                     pass
 
                 elif (frame.type == MDTFrameType.MDT_FRAME_SPECTROSCOPY or
@@ -111,7 +111,7 @@ class MDTFile:
                     frame.extract_text_frame(self._file)
 
                 elif frame.type == MDTFrameType.MDT_FRAME_OLD_MDA:
-                    logging.warning("Frame #%d: Old MDA frame not supported" % i)
+                    logging.warning("Frame #%d: Old MDA frame not supported" % frm)
                     pass
 
                 elif frame.type == MDTFrameType.MDT_FRAME_MDA:
@@ -122,10 +122,10 @@ class MDTFile:
                     pass
 
                 elif frame.type == MDTFrameType.MDT_FRAME_PALETTE:
-                    logging.warning("Frame #%d: Frame palette data not supported."%i)
+                    logging.warning("Frame #%d: Frame palette data not supported."%frm)
 
                 else:
-                    logging.warning("Frame #%d: unknown frame type."%i)
+                    logging.warning("Frame #%d: unknown frame type."%frm)
                     pass
 
                 self.frames.append(frame)
@@ -183,7 +183,7 @@ class MDTFrame:
      self.title      = ""
      self.guids      = ""
 
-     self.image         = None
+     self.data_field    = None #store the pointer to the data for this frame
      self.array_size    = 0
      self.cell_size     = 0
      self.nb_dimensions = 0
@@ -324,29 +324,43 @@ class MDTFrame:
         self.metadata = file.read(xml_len).decode('utf-16')
 
     def extract_mda_calibration(self,file):
+        """read the information on the different axis (x,y,z) and store the in an dictionary
 
+        the keys are :
+            unit_code   : unit code (not really used anymore, but at some point the units where store in enum)
+            accuracy    : the accuracy
+            bias        : the bias, useful to regenerate the x axis for example
+            scale       : the scale
+            min_index   : the minimum
+            max_index   : the maximum (some time the ULONG_MAX)
+            data_type   : the type of the data store in the MDADataType Enum
+            name        : the name of the axis
+            comment     : comment, in certain cas (not implemented here) there is XML metadata with the x axis
+            unit        : the unit in string
+            author      : the author (usually empty)
+        """
         calibration = dict()
 
         starting_position = file.tell()
 
-        calibration['total_len']= file.read_uint32()
+        total_len = file.read_uint32()
 
         struct_len = file.read_uint32()
         sp = file.tell() + struct_len
 
-        calibration['name_len']     = file.read_uint32()
-        calibration['comment_len']  = file.read_uint32()
-        calibration['unit_len']     = file.read_uint32()
+        name_len                    = file.read_uint32()
+        comment_len                 = file.read_uint32()
+        unit_len                    = file.read_uint32()
         calibration['unit_code']    = file.read_uint64() #si_unit
         calibration['accuracy']     = file.read_double()
-        calibration['fct_id']       = file.read_uint32() # not sure what is for
-        calibration['fct_pointer']  = file.read_uint32() # not sure what is for
+        fct_id                      = file.read_uint32() # not sure what is for
+        fct_pointer                 = file.read_uint32() # not sure what is for
         calibration['bias']         = file.read_double()
         calibration['scale']        = file.read_double()
         calibration['min_index']    = file.read_uint64()
         calibration['max_index']    = file.read_uint64()
         calibration['data_type']    = file.read_int32() #not an unsigned int !
-        calibration['author_len']   = file.read_uint32()
+        author_len                  = file.read_uint32()
 
         file.shift_stream_position(36)
 
@@ -356,19 +370,19 @@ class MDTFrame:
             return "".join(map(chr, string_bytes))
 
 
-        calibration['name'] = extract_string(calibration['name_len'])
+        calibration['name'] = extract_string(name_len)
         file.seek(sp) # apparently there is 36 byte after the header not used (at least here)
 
 
 
-        calibration['comment'] = extract_string(calibration['comment_len'])
-        calibration['unit'] = extract_string(calibration['unit_len'])
-        calibration['author'] = extract_string(calibration['author_len'])
-        calibration['comment'] = extract_string(calibration['comment_len'])
+        calibration['comment'] = extract_string(comment_len)
+        calibration['unit'] = extract_string(unit_len)
+        calibration['author'] = extract_string(author_len)
+        calibration['comment'] = extract_string(comment_len)
 
-        file.seek(starting_position + calibration['total_len'])
+        file.seek(starting_position + total_len)
 
-        #print(calibration)
+        logging.info("Calibration: " + str(calibration))
         return calibration
 
     def extract_mda_2D_data(self, file):
@@ -378,7 +392,7 @@ class MDTFrame:
         z_axis = self.mesurands[0]
 
         if y_axis['unit'] != x_axis['unit'] :
-            logging.warning("Frame %d : Error : the unit for X and Y are not the same !" % self.title)
+            logging.warning("Frame %s : Error : the unit for X and Y are not the same !" % self.title)
 
         self.xy_unit = x_axis['unit']
         self.z_unit  = z_axis['unit']
@@ -418,17 +432,27 @@ class MDTFrame:
                 result.append(y_data)
 
         except KeyError as e:
-            print(e)
-            print('The data format in the frame %s is not supported' %self.title)
+            logging.warning(e)
+            logging.warning('The data format in the frame %s is not supported' %self.title)
 
         self.data = np.array(result)
 
-    def extract_mda_spectrum(self,file):
-        """extract the dat for a special mda frame with
-        mesurands == 1 and dimensions  == 1"""
+    def extract_mda_curve(self, file): # previously extract_mda_spectrum
+        """extract the data for mda curve (also called spectrum)
+        with nb_mesurands == 1 and nb_dimensions  == 1 or nb_mesurands == 2 and nb_dimensions  == 0
 
-        x_axis = self.dimensions[0]
-        y_axis = self.mesurands[0]
+        Warning : do no read the special case where the x value are store in the XML metadata,
+                  in this case just create an x axis with a range(length of y)
+        """
+
+        # old-like or new-like curve (see comment bellow
+        if self.nb_dimensions > 0 and self.nb_mesurands > 0 :
+            x_axis = self.dimensions[0]
+            y_axis = self.mesurands[0]
+        else :
+            x_axis = self.mesurands[0]
+            y_axis = self.mesurands[1]
+
 
         self.xy_unit = x_axis['unit']
         self.z_unit = y_axis['unit']
@@ -469,16 +493,16 @@ class MDTFrame:
             }[y_axis['data_type']]
 
             # we check the file pointer position, just in case
-            if self.image != file.tell():
+            if self.data_field != file.tell():
                 raise Exception("Error : There is a shift in the reader position")
 
             # For this part, everything is not clear yet. According to Gwydion code there are 2 types of
-            # curve the old one (mesurands == 1 and dimensions  == 1) with , where the y is in the data field
-            # and x is in the XML-metadata part, and the new one ( mesurands == 0 and dimensions  == 2) where
+            # curve the old one (nb_mesurands == 1 and nb_dimensions  == 1) with , where the y is in the data field
+            # and x is in the XML-metadata part, and the new one ( nb_mesurands == 0 and nb_dimensions  == 2) where
             # the data are stocked alternatively x-y-x-y-x-y...
             #
             # But the curve generated by my version of Nova PX (3.4.0 rev 15815) are more or less of the old type
-            # (mesurands == 1 and the x is not in the data field) but it is not in the XML-metadata par either.
+            # (nb_mesurands == 1 and the x is not in the data field) but it is not in the XML-metadata par either.
             # So we have to regenerate the x from the other metadata (from dimensions)
 
             if self.nb_dimensions >0: # we test if it is old type like
@@ -513,8 +537,6 @@ class MDTFrame:
         except KeyError as e:
             logging.debug(e)
             logging.warning('The data type in the frame %s is not supported' %self.title)
-
-
 
     def extract_scanned_data(self,file):
         """extract the data generated by the STM like device"""
@@ -594,7 +616,8 @@ class MDTFrame:
             for i in range(self.nb_mesurands):
                 self.mesurands.append(self.extract_mda_calibration(file))
 
-        self.image = file.tell()
+        #store the pointer to the data for this frame
+        self.data_field = file.tell()
 
 
         # extraction of the 2D color map
@@ -603,7 +626,7 @@ class MDTFrame:
 
         elif ((self.nb_dimensions == 1 and self.nb_mesurands == 1)
             or (self.nb_dimensions == 0 and self.nb_mesurands == 2)):
-            self.extract_mda_spectrum(file)
+            self.extract_mda_curve(file)
 
             pass
         elif self.nb_dimensions == 3 and self.nb_mesurands >= 1 :
@@ -651,7 +674,7 @@ if __name__ == "__main__":
         "curve_test2.mdt",
     ]
 
-    filename = str(path) +"/Test Files/" + filename[2]
+    filename = str(path) +"/Test Files/" + filename[1]
     mdt_file = MDTFile()
     file_size = os.path.getsize(filename)
 
