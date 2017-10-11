@@ -84,7 +84,6 @@ class MDTFile:
         self._file      =""
 
 
-
     def load_mdt_file(self, file):
         try:
             if isinstance(file, str):
@@ -95,16 +94,13 @@ class MDTFile:
             mdt_file.read_header(self._file)
 
             for frm in range(mdt_file.last_frame + 1):
-                frame = MDTFrame()
-                logging.info("Reading frame %d" % frm)
-                frame.read_frame(self._file, frm)
 
+                logging.info("Reading frame %d" % frm)
+                frame = MDTFrame.read_frame(self._file, frm)
                 self.frames.append(frame)
 
                 # to be sure we reposition the pointer where it should be after reading the frame
                 self._file.seek(frame.fstart + frame.size)
-        #except Exception as e:
-         #   print(Exception)
 
         finally:
             self._file.close()
@@ -170,7 +166,6 @@ class MDTFrame:
      self.xreal         = 0 # physical size
      self.yreal         = 0
 
-
     def unit_code_for_si_code(self,code):
         """transform the binary code for unit in the mda frame to understandable unit """
         if int(code) == 0x0000000000000001:
@@ -186,35 +181,40 @@ class MDTFrame:
         else :
             return MDTUnit.MDT_UNIT_SECOND
 
-    def read_frame(self,file, num=0):
-        self.extract_header(file)
+    @staticmethod
+    def read_frame(file, num=0):
 
-        if self.type == MDTFrameType.MDT_FRAME_SCANNED:
+        frame = MDTFrame()
+        frame.extract_header(file)
+
+        if frame.type == MDTFrameType.MDT_FRAME_SCANNED:
             logging.warning("Frame #%d: Frame STM not implemented yet." % num)
 
-        elif (self.type == MDTFrameType.MDT_FRAME_SPECTROSCOPY or
-                      self.type == MDTFrameType.MDT_FRAME_CURVES):
+        elif (frame.type == MDTFrameType.MDT_FRAME_SPECTROSCOPY or
+                      frame.type == MDTFrameType.MDT_FRAME_CURVES):
             logging.warning("Frame #%d: MDT_FRAME_SPECTROSCOPY and MDT_FRAME_CURVES not implemented yet." % num)
 
-        elif self.type == MDTFrameType.MDT_FRAME_TEXT:
+        elif frame.type == MDTFrameType.MDT_FRAME_TEXT:
             logging.info("Frame %d is a text frame"%num)
-            self.extract_text_frame(file)
+            frame.extract_text_frame(file)
 
-        elif self.type == MDTFrameType.MDT_FRAME_OLD_MDA:
+        elif frame.type == MDTFrameType.MDT_FRAME_OLD_MDA:
             logging.warning("Frame #%d: Old MDA frame not supported" % num)
 
-        elif self.type == MDTFrameType.MDT_FRAME_MDA:
+        elif frame.type == MDTFrameType.MDT_FRAME_MDA:
             logging.info("Frame %d is a MDA frame" % num)
-            self.read_mda_frame(file)
+            frame.read_mda_frame(file)
 
-        elif self.type == MDTFrameType.MDT_FRAME_CURVES_NEW:
+        elif frame.type == MDTFrameType.MDT_FRAME_CURVES_NEW:
             logging.warning("Frame #%d: MDT_FRAME_CURVES_NEW not supported." % num)
 
-        elif self.type == MDTFrameType.MDT_FRAME_PALETTE:
+        elif frame.type == MDTFrameType.MDT_FRAME_PALETTE:
             logging.warning("Frame #%d: Frame palette data not supported." % num)
 
         else:
             logging.warning("Frame #%d: unknown frame type." % num)
+
+        return frame
 
     def extract_header(self, file):
         """
