@@ -2,10 +2,14 @@ import binascii
 import io
 import os
 from struct import *
-import numpy as np
 
+import numpy as np
+import logging
 
 from MDTdeclaration import *
+
+# activate the loging system at the lower level
+logging.basicConfig(level=logging.INFO, format="%(asctime)s -- %(levelname)s -- %(message)s")
 
 
 class MDTFile:
@@ -79,8 +83,7 @@ class MDTFile:
         self.frames     = []
         self._file      =""
 
-    def _debug(self,text):
-        print("Debug: " + str(text))
+
 
     def load_mdt_file(self, file):
         try:
@@ -97,7 +100,7 @@ class MDTFile:
                 #frame.print_header()
 
                 if frame.type == MDTFrameType.MDT_FRAME_SCANNED:
-                    self._debug("ERROR - Frame #%d: Frame STM not implemented yet." % i)
+                    logging.warning("Frame #%d: Frame STM not implemented yet." % i)
                     pass
 
                 elif (frame.type == MDTFrameType.MDT_FRAME_SPECTROSCOPY or
@@ -108,7 +111,7 @@ class MDTFile:
                     frame.extract_text_frame(self._file)
 
                 elif frame.type == MDTFrameType.MDT_FRAME_OLD_MDA:
-                    self._debug("ERROR - Frame #%d: Old MDA frame not supported" % i)
+                    logging.warning("Frame #%d: Old MDA frame not supported" % i)
                     pass
 
                 elif frame.type == MDTFrameType.MDT_FRAME_MDA:
@@ -119,10 +122,10 @@ class MDTFile:
                     pass
 
                 elif frame.type == MDTFrameType.MDT_FRAME_PALETTE:
-                    self._debug("ERROR - Frame #%d: Frame palette data not supported."%i)
+                    logging.warning("Frame #%d: Frame palette data not supported."%i)
 
                 else:
-                    self._debug("ERROR - Frame #%d: unknown frame type."%i)
+                    logging.warning("Frame #%d: unknown frame type."%i)
                     pass
 
                 self.frames.append(frame)
@@ -196,8 +199,6 @@ class MDTFrame:
      self.xreal         = 0 # physical size
      self.yreal         = 0
 
-    def _debug(self,text):
-        print("Debug: " + str(text))
 
     def unit_code_for_si_code(self,code):
         """transform the binary code for unit in the mda frame to understandable unit """
@@ -376,7 +377,8 @@ class MDTFrame:
         y_axis = self.dimensions[1]
         z_axis = self.mesurands[0]
 
-        if y_axis['unit'] != x_axis['unit'] : print("Error : the unit for X and Y are not the same !")
+        if y_axis['unit'] != x_axis['unit'] :
+            logging.warning("Frame %d : Error : the unit for X and Y are not the same !" % self.title)
 
         self.xy_unit = x_axis['unit']
         self.z_unit  = z_axis['unit']
@@ -492,7 +494,7 @@ class MDTFrame:
 
 
                 else :
-                    self._debug("The old type of MDA curve (with the x axis stocked" +
+                    logging.warning("The old type of MDA curve (with the x axis stocked" +
                                 " in the xml metadata are not supported.")
                     x= np.arange(data_len)
 
@@ -509,8 +511,8 @@ class MDTFrame:
             self.data = np.array([x, y])
 
         except KeyError as e:
-            print(e)
-            self._debug('The data type in the frame %s is not supported' %self.title)
+            logging.debug(e)
+            logging.warning('The data type in the frame %s is not supported' %self.title)
 
 
 
@@ -611,7 +613,7 @@ class MDTFrame:
             #     gwy_container_transfer(brick, data, "/", "/", FALSE);
             pass
         else :
-                print(" frame %s : dim = %d mes = %d, not supported\n" %
+            logging.warning(" frame %s : dim = %d mes = %d, not supported\n" %
                       (self.title, self.nb_dimensions, self.nb_mesurands))
 
     def print_header(self):
@@ -619,15 +621,15 @@ class MDTFrame:
         Print all the info load from the frame header
         (for debug purpose).
         """
-        print("--------------------------------------")
-        print("Frame start at byte %d" % self.fstart)
-        print("frame size: " + str(self.size) + " bytes")
-        print("Frame version: " + str(self.version))
-        print("Frame datetime: %d-%02d-%02d %02d:%02d:%02d" % \
+        logging.debug("--------------------------------------")
+        logging.debug("Frame start at byte %d" % self.fstart)
+        logging.debug("frame size: " + str(self.size) + " bytes")
+        logging.debug("Frame version: " + str(self.version))
+        logging.debug("Frame datetime: %d-%02d-%02d %02d:%02d:%02d" % \
                (self.year, self.month, self.day, self.hour, self.min, self.sec))
-        print("frame var_size : " + str(self.var_size) + " -- Not use in version 7.x")
-        print("Frame type : " + str(self.type) + " -- "+ str(MDTFrameType(self.type)))
-        print("--------------------------------------")
+        logging.debug("frame var_size : " + str(self.var_size) + " -- Not use in version 7.x")
+        logging.debug("Frame type : " + str(self.type) + " -- "+ str(MDTFrameType(self.type)))
+        logging.debug("--------------------------------------")
 
 
 
@@ -649,7 +651,7 @@ if __name__ == "__main__":
         "curve_test2.mdt",
     ]
 
-    filename = str(path) +"/Test Files/" + filename[-2]
+    filename = str(path) +"/Test Files/" + filename[2]
     mdt_file = MDTFile()
     file_size = os.path.getsize(filename)
 
