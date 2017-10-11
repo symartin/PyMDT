@@ -410,33 +410,31 @@ class MDTFrame:
         zoffset =  z_axis['bias']
 
         total = self.nx * self.ny
-        result = []
-
-        file_fct_read = {
-            MDADataType.MDA_DATA_INT8 : file.read_int8,
-            MDADataType.MDA_DATA_UINT8 : file.read_uint8,
-            MDADataType.MDA_DATA_INT16 : file.read_int16,
-            MDADataType.MDA_DATA_UINT16: file.read_uint16,
-            MDADataType.MDA_DATA_INT32: file.read_int32,
-            MDADataType.MDA_DATA_UINT32: file.read_uint32,
-            MDADataType.MDA_DATA_INT64: file.read_int64,
-            MDADataType.MDA_DATA_UINT64: file.read_uint64,
-            MDADataType.MDA_DATA_FLOAT32: file.read_float32,
-            MDADataType.MDA_DATA_FLOAT64: file.read_float64,
-        }[z_axis['data_type']]
 
         try:
+            file_fct_read = {
+                MDADataType.MDA_DATA_INT8 : file.read_int8,
+                MDADataType.MDA_DATA_UINT8 : file.read_uint8,
+                MDADataType.MDA_DATA_INT16 : file.read_int16,
+                MDADataType.MDA_DATA_UINT16: file.read_uint16,
+                MDADataType.MDA_DATA_INT32: file.read_int32,
+                MDADataType.MDA_DATA_UINT32: file.read_uint32,
+                MDADataType.MDA_DATA_INT64: file.read_int64,
+                MDADataType.MDA_DATA_UINT64: file.read_uint64,
+                MDADataType.MDA_DATA_FLOAT32: file.read_float32,
+                MDADataType.MDA_DATA_FLOAT64: file.read_float64,
+            }[z_axis['data_type']]
+
+
+            data = np.empty(total)
             for i in range(self.nx):
-                y_data = []
-                for j in range(self.ny):
-                    y_data.append(file_fct_read())
-                result.append(y_data)
+                data[i] = file_fct_read()
 
         except KeyError as e:
             logging.warning(e)
             logging.warning('The data format in the frame %s is not supported' %self.title)
 
-        self.data = np.array(result)
+        self.data = np.reshape(data,(self.nx,self.ny))
 
     def extract_mda_curve(self, file): # previously extract_mda_spectrum
         """extract the data for mda curve (also called spectrum)
@@ -685,6 +683,11 @@ if __name__ == "__main__":
     mdt_file.load_mdt_file(filename)
     for i, frm in enumerate(mdt_file.frames):
         print(str(i) + " - " + frm.title + " - " + str(frm.type))
+
+    print(mdt_file.frames[1].data)
+
+
+    np.savetxt(str(path)+"/foo.csv", mdt_file.frames[1].data, delimiter="\t")
 
 
     # print(mdt_file.frames[0].data.T)
