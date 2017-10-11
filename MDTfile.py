@@ -623,14 +623,17 @@ class MDTFrame:
 
         # extraction of the 2D color map
         if self.nb_dimensions == 2 and self.nb_mesurands == 1:
+            logging.info("It's a 2D MDA frame")
             self.extract_mda_2D_data(file)
 
         elif ((self.nb_dimensions == 1 and self.nb_mesurands == 1)
             or (self.nb_dimensions == 0 and self.nb_mesurands == 2)):
+            logging.info("It's a 1D MDA curve frame")
             self.extract_mda_curve(file)
 
             pass
         elif self.nb_dimensions == 3 and self.nb_mesurands >= 1 :
+            logging.info("It's a 3D MDA 'brick' frame")
             raise Exception(" MDA-Frame/brick data not supported yet.")
             # raman images */
             # if ((brick = extract_brick(mdaframe, i+1, &n, filename))) {
