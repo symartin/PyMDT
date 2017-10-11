@@ -427,7 +427,7 @@ class MDTFrame:
 
             data = np.empty(total)
             for i in range(total):
-                data[i] = file_fct_read()
+                data[i] = zoffset + zscale*file_fct_read()
 
         except KeyError as e:
             logging.warning(e)
