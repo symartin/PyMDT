@@ -12,9 +12,30 @@ from MDTdeclaration import *
 logging.basicConfig(level=logging.INFO, format="%(asctime)s -- %(levelname)s -- %(message)s")
 
 
-class MDTFile:
+class MDTFile(list):
 
-    class _MDTBufferedReaderDecorator(object):
+    def __getitem__(self, key):
+        if isinstance(key,int) :
+            return super(MDTFile, self).__getitem__(key)
+
+        elif isinstance(key,str):
+            frm_by_title = []
+            for frm in self:
+                if frm.title == key:
+                    frm_by_title.append(frm)
+
+            if len(frm_by_title)==0 : raise KeyError("No frame with the title : %s"%key)
+            if len(frm_by_title)==1 : return frm_by_title[0]
+            if len(frm_by_title)> 1  : return frm_by_title
+
+
+    class __MDTBufferedReaderDecorator(object):
+        """
+            a decorator class that facilitate the sequential reading of a file.
+
+            The class will redirect al the standard file methods and add some methods to read and integer and float number
+            encoded on 8, 16, 32 or 64 bits
+        """
         def __init__(self, file_):
             self._file = file_
 
@@ -78,49 +99,63 @@ class MDTFile:
             return getattr(self._file, attr)
 
     def __init__(self, mdt_file = None):
-        self.size       = 0
-        self.last_frame = 0
-        self.frames     = []
-        self._file      =""
+        """
+            initialise the object, and if mdt_file is a path to a mde file or a opened file object,
+            will read it and extract the data.
+
+            if mdt_file is an open file object, it has to be open in binary mode.
+        """
+
+        super().__init__()
+
+        self.frames = []
+        self.nb_frame = 0
+
+        self.__mdt_file_size    = 0
+        self.__file             = ""
 
         if mdt_file:
             self.load_mdt_file(mdt_file)
 
     def load_mdt_file(self, file):
+        """
+            Load a mdt file and populate the frame list
+            file can be a file object or a path (string) to the file
+        """
         try:
             if isinstance(file, str):
-                self._file = self._MDTBufferedReaderDecorator(open(file, mode='rb'))
+                self.__file = self.__MDTBufferedReaderDecorator(open(file, mode='rb'))
             else:
-                self._file = self._MDTBufferedReaderDecorator(file)
+                self.__file = self.__MDTBufferedReaderDecorator(file)
 
-            mdt_file.__read_header(self._file)
+            mdt_file.__read_header(self.__file)
 
-            for frm in range(mdt_file.last_frame + 1):
+            for frm in range(mdt_file.nb_frame + 1):
 
                 logging.info("Reading frame %d" % frm)
-                frame = MDTFrame.read_frame(self._file, frm)
-                self.frames.append(frame)
+                frame = MDTFrame.read_frame(self.__file, frm)
+                self.append(frame)
 
                 # to be sure we reposition the pointer where it should be after reading the frame
-                self._file.seek(frame.frm_ptr_start + frame.frm_byte_size)
+                self.__file.seek(frame.frm_ptr_start + frame.frm_byte_size)
 
         finally:
-            self._file.close()
+            self.__file.close()
 
     def __read_header(self, file):
         """ Read the header of the mdt file"""
-        if file_size < 34: raise Exception("The file is shorter than it's header frm_byte_size")
+
         # magic header
         file.shift_stream_position(4)
 
         # File frm_byte_size (w/o header)
-        self.size = file.read_uint32()
+        self.__mdt_file_size = file.read_uint32()
 
         #  4 bytes reserved (??)
         file.shift_stream_position(4)
 
         # last frame
-        self.last_frame = file.read_uint16()
+        self.nb_frame = file.read_uint16()
 
         #  18 bytes reserved (??)
         file.shift_stream_position(18)
@@ -129,9 +164,6 @@ class MDTFile:
         # starts at 33th byte in reality
         file.shift_stream_position(1)
 
-        if file_size < self.size + 33:
-            raise Exception("Mismatch between the actual file frm_byte_size \
-                             and the frm_byte_size declared in the header")
 
 
 class MDTFrame:
@@ -714,7 +746,8 @@ if __name__ == "__main__":
     for i, frm in enumerate(mdt_file.frames):
         print(str(i) + " - " + frm.title + " - " + str(frm.type))
         print(frm.xbias,frm.ybias )
-
+    print(mdt_file[1].title)
+    print(len(mdt_file[mdt_file[1].title]))
     #print(mdt_file.frames[1].data)
 
 
