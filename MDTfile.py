@@ -8,7 +8,7 @@ import logging
 
 from MDTdeclaration import *
 
-# activate the loging system at the lower level
+# activate the logging system at the lower level
 logging.basicConfig(level=logging.INFO, format="%(asctime)s -- %(levelname)s -- %(message)s")
 
 
@@ -108,7 +108,6 @@ class MDTFile(list):
 
         super().__init__()
 
-        self.frames = []
         self.nb_frame = 0
 
         self.__mdt_file_size    = 0
@@ -743,7 +742,7 @@ if __name__ == "__main__":
     file_size = os.path.getsize(filename)
 
     mdt_file.load_mdt_file(filename)
-    for i, frm in enumerate(mdt_file.frames):
+    for i, frm in enumerate(mdt_file):
         print(str(i) + " - " + frm.title + " - " + str(frm.type))
         print(frm.xbias,frm.ybias )
     print(mdt_file[1].title)
