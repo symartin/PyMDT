@@ -425,9 +425,8 @@ class MDTFrame:
                 MDADataType.MDA_DATA_FLOAT64: file.read_float64,
             }[z_axis['data_type']]
 
-
             data = np.empty(total)
-            for i in range(self.nx):
+            for i in range(total):
                 data[i] = file_fct_read()
 
         except KeyError as e:
