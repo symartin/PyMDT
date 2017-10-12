@@ -183,7 +183,7 @@ class MDTFile(list):
 
         elif frame.type == MDTFrameType.MDT_FRAME_MDA:
             logging.info("Frame %d is a MDA frame" % num)
-            self._read_mda_frame(frame)
+            self._extract_mda_frame(frame)
             logging.info("--> Frame %s loaded" % frame.title)
 
         elif frame.type == MDTFrameType.MDT_FRAME_CURVES_NEW:
@@ -546,7 +546,7 @@ class MDTFile(list):
     def _extract_curve_data(self, frame):
         pass
 
-    def _read_mda_frame(self, frame):
+    def _extract_mda_frame(self, frame):
         """Read the header of the frame and then call the right function to read the data"""
 
         #to realign at the right position later
@@ -680,9 +680,9 @@ class MDTFrame:
         self.dimensions    = []     # a list of the dictionary with all the dimension
         self.dimensions_unit = ""   # the unit for the dimensions (usually x and y - should be the same)
 
-        self.nb_mesurands  = 0      # the number of mesurand (Wikipedia: the physical quantity or property which is measured.)
-        self.mesurands     = []     # a list of the dictionary with all the mesurands
-        self.mesurands_unit    = "" #the unit for mesurands
+        self.nb_mesurands   = 0      # the number of mesurand (Wikipedia: the physical quantity or property which is measured.)
+        self.mesurands      = []     # a list of the dictionary with all the mesurands
+        self.mesurands_unit = "" #the unit for mesurands
 
         # more for 2D data, those varable are here for convenient, everything is already in dimensions and/or mesurands
         self.xn            = 0 # the number of point for the x axis
@@ -705,7 +705,6 @@ class MDTFrame:
                (self.year, self.month, self.day, self.hour, self.min, self.sec))
         logging.debug("Frame type : " + str(self.type) + " -- "+ str(MDTFrameType(self.type)))
         logging.debug("--------------------------------------")
-
 
 
 
