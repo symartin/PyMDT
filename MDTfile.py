@@ -125,9 +125,9 @@ class MDTFile(list):
             else:
                 self._file = self.__MDTBufferedReaderDecorator(file)
 
-            mdt_file._read_header()
+            self._read_header()
 
-            for frm in range(mdt_file.nb_frame + 1):
+            for frm in range(self.nb_frame + 1):
 
                 logging.info("Reading frame %d" % frm)
                 frame = self._read_frame(frm)
@@ -712,20 +712,21 @@ if __name__ == "__main__":
 
     import sys, os
     path = os.path.abspath(os.path.dirname(sys.argv[0]))
-
-    filename = [
-        "test5.mdt",
+    print(path)
+     
+    filenames = [
+        #"test5.mdt",
         "f14h20-mica.mdt",
         "erythrocytes-aa.mdt",
         "ferrite-garnet_film.mdt",
         "graphene_2.mdt",
         "plasmid_dna-aa.mdt",
         "test_structure.mdt",
-        "curve_test.mdt",
-        "curve_test2.mdt",
+        #"curve_test.mdt",
+        #"curve_test2.mdt",
     ]
 
-    filename = str(path) +"/Test Files/" + filename[0]
+    filename = os.path.join(path, "Test Files" , filenames[0])
     mdt_file = MDTFile()
     file_size = os.path.getsize(filename)
 
